@@ -87,11 +87,21 @@
 
     #deleteModel {
       position: fixed;
-      right: 16px;
+      left: 16px;
       bottom: 24px;
       min-width: 72px;
       background: rgba(255, 80, 80, 0.95);
       color: #fff;
+      z-index: 40;
+    }
+
+    #angleToggle {
+      position: fixed;
+      right: 16px;
+      bottom: 24px;
+      min-width: 92px;
+      background: rgba(255, 255, 255, 0.95);
+      color: #111;
       z-index: 40;
     }
 
@@ -105,17 +115,17 @@
   <div id="info">
     WebXR 地下模型テスト<br>
     地面をタップすると模型を1個だけ配置します。<br>
-    配置後、回転・位置微調整できます。
+    回転角度は右下ボタンで切り替えできます。
   </div>
 
   <div id="statusLabel">
-    未配置
+    未配置 / 角度 5°
   </div>
 
   <div id="controls">
     <div class="control-row">
-      <button class="control-button" id="rotateLeft">← 30°</button>
-      <button class="control-button" id="rotateRight">30° →</button>
+      <button class="control-button" id="rotateLeft">← 回転</button>
+      <button class="control-button" id="rotateRight">回転 →</button>
     </div>
 
     <div class="control-row">
@@ -130,6 +140,7 @@
   </div>
 
   <button class="control-button" id="deleteModel">削除</button>
+  <button class="control-button" id="angleToggle">角度 5°</button>
 
   <script type="module">
     import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
@@ -149,14 +160,17 @@
     // 位置微調整量：1cm
     const moveStep = 0.01;
 
-    // 回転角度：30度
-    const rotateStep = THREE.MathUtils.degToRad(30);
+    // 回転角度：30° / 5° / 1° を切り替え
+    const rotateStepsDeg = [30, 5, 1];
+    let rotateStepIndex = 1; // 初期値は5°
+    let rotateStep = THREE.MathUtils.degToRad(rotateStepsDeg[rotateStepIndex]);
 
     const statusLabel = document.getElementById("statusLabel");
 
     const rotateLeftButton = document.getElementById("rotateLeft");
     const rotateRightButton = document.getElementById("rotateRight");
     const deleteModelButton = document.getElementById("deleteModel");
+    const angleToggleButton = document.getElementById("angleToggle");
 
     const moveForwardButton = document.getElementById("moveForward");
     const moveBackButton = document.getElementById("moveBack");
@@ -167,7 +181,8 @@
     document.body.addEventListener("beforexrselect", function(event) {
       if (
         event.target.closest("#controls") ||
-        event.target.closest("#deleteModel")
+        event.target.closest("#deleteModel") ||
+        event.target.closest("#angleToggle")
       ) {
         event.preventDefault();
       }
@@ -192,7 +207,7 @@
       }
 
       placedModel.rotateY(-rotateStep);
-      updateStatus("左回転 30°");
+      updateStatus("左回転 " + getCurrentAngleText());
     });
 
     rotateRightButton.addEventListener("click", function(event) {
@@ -204,7 +219,17 @@
       }
 
       placedModel.rotateY(rotateStep);
-      updateStatus("右回転 30°");
+      updateStatus("右回転 " + getCurrentAngleText());
+    });
+
+    angleToggleButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+
+      rotateStepIndex = (rotateStepIndex + 1) % rotateStepsDeg.length;
+      rotateStep = THREE.MathUtils.degToRad(rotateStepsDeg[rotateStepIndex]);
+
+      updateAngleButton();
+      updateStatus("角度 " + getCurrentAngleText());
     });
 
     deleteModelButton.addEventListener("click", function(event) {
@@ -240,6 +265,14 @@
       moveModel("right");
     });
 
+    function getCurrentAngleText() {
+      return rotateStepsDeg[rotateStepIndex] + "°";
+    }
+
+    function updateAngleButton() {
+      angleToggleButton.textContent = "角度 " + getCurrentAngleText();
+    }
+
     function moveModel(direction) {
       if (!placedModel) {
         updateStatus("未配置");
@@ -269,12 +302,13 @@
     }
 
     function updateStatus(message) {
+      const base = placedModel ? "配置済み" : "未配置";
+      const angle = "角度 " + getCurrentAngleText();
+
       if (message) {
-        statusLabel.textContent = message;
-      } else if (placedModel) {
-        statusLabel.textContent = "配置済み";
+        statusLabel.textContent = message + " / " + angle;
       } else {
-        statusLabel.textContent = "未配置";
+        statusLabel.textContent = base + " / " + angle;
       }
     }
 
@@ -328,6 +362,9 @@
       reticle.matrixAutoUpdate = false;
       reticle.visible = false;
       scene.add(reticle);
+
+      updateAngleButton();
+      updateStatus();
 
       window.addEventListener("resize", onWindowResize);
     }
