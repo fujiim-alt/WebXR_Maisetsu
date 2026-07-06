@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -36,7 +35,7 @@
     #statusLabel {
       position: fixed;
       left: 50%;
-      bottom: 98px;
+      bottom: 270px;
       transform: translateX(-50%);
       padding: 8px 12px;
       border-radius: 999px;
@@ -51,26 +50,38 @@
 
     #controls {
       position: fixed;
-      left: 12px;
-      right: 12px;
-      bottom: 24px;
+      left: 10px;
+      right: 10px;
+      bottom: 112px;
       display: flex;
-      gap: 10px;
-      justify-content: center;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
       z-index: 30;
       pointer-events: auto;
     }
 
+    .control-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
     .control-button {
-      padding: 13px 16px;
+      min-width: 72px;
+      padding: 11px 12px;
       border: none;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.95);
       color: #111;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
       touch-action: manipulation;
+    }
+
+    .move-button {
+      min-width: 58px;
     }
 
     .delete-button {
@@ -87,18 +98,30 @@
 <body>
   <div id="info">
     WebXR 地下模型テスト<br>
-    地面をタップすると模型を配置します。<br>
-    配置後、最後に置いた模型を回転・削除できます。
+    地面をタップすると模型を1個だけ配置します。<br>
+    配置後、回転・位置微調整できます。
   </div>
 
   <div id="statusLabel">
-    配置数：0
+    未配置
   </div>
 
   <div id="controls">
-    <button class="control-button" id="rotateLeft">← 回転</button>
-    <button class="control-button" id="rotateRight">回転 →</button>
-    <button class="control-button delete-button" id="deleteLast">削除</button>
+    <div class="control-row">
+      <button class="control-button" id="rotateLeft">← 30°</button>
+      <button class="control-button" id="rotateRight">30° →</button>
+      <button class="control-button delete-button" id="deleteModel">削除</button>
+    </div>
+
+    <div class="control-row">
+      <button class="control-button move-button" id="moveForward">前</button>
+    </div>
+
+    <div class="control-row">
+      <button class="control-button move-button" id="moveLeft">左</button>
+      <button class="control-button move-button" id="moveBack">後</button>
+      <button class="control-button move-button" id="moveRight">右</button>
+    </div>
   </div>
 
   <script type="module">
@@ -113,13 +136,25 @@
     let hitTestSource = null;
     let hitTestSourceRequested = false;
 
-    // 配置済みモデルを入れておく配列
-    const placedModels = [];
+    // 配置できるモデルは1個だけ
+    let placedModel = null;
+
+    // 位置微調整量：1cm
+    const moveStep = 0.01;
+
+    // 回転角度：30度
+    const rotateStep = THREE.MathUtils.degToRad(30);
 
     const statusLabel = document.getElementById("statusLabel");
+
     const rotateLeftButton = document.getElementById("rotateLeft");
     const rotateRightButton = document.getElementById("rotateRight");
-    const deleteLastButton = document.getElementById("deleteLast");
+    const deleteModelButton = document.getElementById("deleteModel");
+
+    const moveForwardButton = document.getElementById("moveForward");
+    const moveBackButton = document.getElementById("moveBack");
+    const moveLeftButton = document.getElementById("moveLeft");
+    const moveRightButton = document.getElementById("moveRight");
 
     // AR中にボタンを押した時、地面タップとして誤認されないようにする
     document.body.addEventListener("beforexrselect", function(event) {
@@ -133,67 +168,104 @@
       event.stopPropagation();
     }
 
-    rotateLeftButton.addEventListener("pointerdown", stopButtonEvent);
-    rotateRightButton.addEventListener("pointerdown", stopButtonEvent);
-    deleteLastButton.addEventListener("pointerdown", stopButtonEvent);
+    const allButtons = document.querySelectorAll(".control-button");
+    allButtons.forEach(function(button) {
+      button.addEventListener("pointerdown", stopButtonEvent);
+    });
 
     rotateLeftButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
 
-      const model = getLastModel();
-
-      if (!model) {
-        updateStatus("まだ配置されていません");
+      if (!placedModel) {
+        updateStatus("未配置");
         return;
       }
 
-      model.rotateY(-Math.PI / 2);
-      updateStatus();
+      placedModel.rotateY(-rotateStep);
+      updateStatus("左回転 30°");
     });
 
     rotateRightButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
 
-      const model = getLastModel();
-
-      if (!model) {
-        updateStatus("まだ配置されていません");
+      if (!placedModel) {
+        updateStatus("未配置");
         return;
       }
 
-      model.rotateY(Math.PI / 2);
-      updateStatus();
+      placedModel.rotateY(rotateStep);
+      updateStatus("右回転 30°");
     });
 
-    deleteLastButton.addEventListener("click", function(event) {
+    deleteModelButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
 
-      const model = placedModels.pop();
-
-      if (!model) {
-        updateStatus("削除する模型がありません");
+      if (!placedModel) {
+        updateStatus("削除対象なし");
         return;
       }
 
-      scene.remove(model);
-      updateStatus();
+      scene.remove(placedModel);
+      placedModel = null;
+      updateStatus("削除しました");
     });
 
-    function getLastModel() {
-      if (placedModels.length === 0) {
-        return null;
+    moveForwardButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+      moveModel("forward");
+    });
+
+    moveBackButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+      moveModel("back");
+    });
+
+    moveLeftButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+      moveModel("left");
+    });
+
+    moveRightButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+      moveModel("right");
+    });
+
+    function moveModel(direction) {
+      if (!placedModel) {
+        updateStatus("未配置");
+        return;
       }
 
-      return placedModels[placedModels.length - 1];
+      // translateX / translateZ は、模型自身の向きを基準に移動します
+      if (direction === "forward") {
+        placedModel.translateZ(-moveStep);
+        updateStatus("前へ 1cm");
+      }
+
+      if (direction === "back") {
+        placedModel.translateZ(moveStep);
+        updateStatus("後へ 1cm");
+      }
+
+      if (direction === "left") {
+        placedModel.translateX(-moveStep);
+        updateStatus("左へ 1cm");
+      }
+
+      if (direction === "right") {
+        placedModel.translateX(moveStep);
+        updateStatus("右へ 1cm");
+      }
     }
 
     function updateStatus(message) {
       if (message) {
         statusLabel.textContent = message;
-        return;
+      } else if (placedModel) {
+        statusLabel.textContent = "配置済み";
+      } else {
+        statusLabel.textContent = "未配置";
       }
-
-      statusLabel.textContent = "配置数：" + placedModels.length;
     }
 
     init();
@@ -255,15 +327,21 @@
         return;
       }
 
+      // 1個までなので、既存モデルがあれば削除
+      if (placedModel) {
+        scene.remove(placedModel);
+        placedModel = null;
+      }
+
       const model = createUndergroundMiniModel();
 
       model.position.setFromMatrixPosition(reticle.matrix);
       model.quaternion.setFromRotationMatrix(reticle.matrix);
 
       scene.add(model);
-      placedModels.push(model);
+      placedModel = model;
 
-      updateStatus();
+      updateStatus("配置しました");
     }
 
     function createUndergroundMiniModel() {
