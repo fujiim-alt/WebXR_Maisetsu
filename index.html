@@ -35,7 +35,7 @@
     #statusLabel {
       position: fixed;
       left: 50%;
-      bottom: 270px;
+      bottom: 286px;
       transform: translateX(-50%);
       padding: 8px 12px;
       border-radius: 999px;
@@ -65,6 +65,7 @@
       display: flex;
       gap: 8px;
       justify-content: center;
+      align-items: center;
     }
 
     .control-button {
@@ -84,9 +85,18 @@
       min-width: 58px;
     }
 
-    .delete-button {
+    .rotation-spacer {
+      width: 58px;
+    }
+
+    #deleteModel {
+      position: fixed;
+      right: 16px;
+      bottom: 24px;
+      min-width: 72px;
       background: rgba(255, 80, 80, 0.95);
       color: #fff;
+      z-index: 40;
     }
 
     .control-button:active {
@@ -108,21 +118,22 @@
 
   <div id="controls">
     <div class="control-row">
-      <button class="control-button" id="rotateLeft">← 30°</button>
-      <button class="control-button" id="rotateRight">30° →</button>
-      <button class="control-button delete-button" id="deleteModel">削除</button>
-    </div>
-
-    <div class="control-row">
       <button class="control-button move-button" id="moveForward">前</button>
     </div>
 
     <div class="control-row">
+      <button class="control-button" id="rotateLeft">← 30°</button>
       <button class="control-button move-button" id="moveLeft">左</button>
-      <button class="control-button move-button" id="moveBack">後</button>
       <button class="control-button move-button" id="moveRight">右</button>
+      <button class="control-button" id="rotateRight">30° →</button>
+    </div>
+
+    <div class="control-row">
+      <button class="control-button move-button" id="moveBack">後</button>
     </div>
   </div>
+
+  <button class="control-button" id="deleteModel">削除</button>
 
   <script type="module">
     import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
@@ -136,13 +147,9 @@
     let hitTestSource = null;
     let hitTestSourceRequested = false;
 
-    // 配置できるモデルは1個だけ
     let placedModel = null;
 
-    // 位置微調整量：1cm
     const moveStep = 0.01;
-
-    // 回転角度：30度
     const rotateStep = THREE.MathUtils.degToRad(30);
 
     const statusLabel = document.getElementById("statusLabel");
@@ -156,9 +163,11 @@
     const moveLeftButton = document.getElementById("moveLeft");
     const moveRightButton = document.getElementById("moveRight");
 
-    // AR中にボタンを押した時、地面タップとして誤認されないようにする
     document.body.addEventListener("beforexrselect", function(event) {
-      if (event.target.closest("#controls")) {
+      if (
+        event.target.closest("#controls") ||
+        event.target.closest("#deleteModel")
+      ) {
         event.preventDefault();
       }
     });
@@ -236,7 +245,6 @@
         return;
       }
 
-      // translateX / translateZ は、模型自身の向きを基準に移動します
       if (direction === "forward") {
         placedModel.translateZ(-moveStep);
         updateStatus("前へ 1cm");
@@ -327,7 +335,6 @@
         return;
       }
 
-      // 1個までなので、既存モデルがあれば削除
       if (placedModel) {
         scene.remove(placedModel);
         placedModel = null;
@@ -347,12 +354,6 @@
     function createUndergroundMiniModel() {
       const group = new THREE.Group();
 
-      // 小さい模型版
-      // 45m -> 45cm = 0.45m
-      // 16m -> 16cm = 0.16m
-      // 2.5m -> 2.5cm = 0.025m
-      // 6.0m -> 6cm = 0.06m
-
       const width = 0.45;
       const depth = 0.16;
 
@@ -362,7 +363,6 @@
       const lightCenterY = -lightHeight / 2;
       const darkCenterY = -lightHeight - darkHeight / 2;
 
-      // GL 0cm ～ -2.5cm：薄色
       const lightBoxGeometry = new THREE.BoxGeometry(width, lightHeight, depth);
       const lightBoxMaterial = new THREE.MeshStandardMaterial({
         color: 0x00aaff,
@@ -375,7 +375,6 @@
       lightBox.position.y = lightCenterY;
       group.add(lightBox);
 
-      // GL -2.5cm ～ -6.0cm：濃色
       const darkBoxGeometry = new THREE.BoxGeometry(width, darkHeight, depth);
       const darkBoxMaterial = new THREE.MeshStandardMaterial({
         color: 0x0044ff,
@@ -388,7 +387,6 @@
       darkBox.position.y = darkCenterY;
       group.add(darkBox);
 
-      // 薄色ボックス枠線
       const lightEdges = new THREE.EdgesGeometry(lightBoxGeometry);
       const lightLine = new THREE.LineSegments(
         lightEdges,
@@ -397,7 +395,6 @@
       lightLine.position.y = lightCenterY;
       group.add(lightLine);
 
-      // 濃色ボックス枠線
       const darkEdges = new THREE.EdgesGeometry(darkBoxGeometry);
       const darkLine = new THREE.LineSegments(
         darkEdges,
@@ -406,12 +403,10 @@
       darkLine.position.y = darkCenterY;
       group.add(darkLine);
 
-      // 地表枠
       const groundFrame = createRectangleFrame(width, depth, 0xffaa00);
       groundFrame.position.y = 0.002;
       group.add(groundFrame);
 
-      // 四隅十字マーカー
       const markerLength = 0.035;
       const markerThickness = 0.006;
       const markerY = 0.004;
