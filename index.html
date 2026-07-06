@@ -30,6 +30,42 @@
       line-height: 1.5;
       z-index: 10;
     }
+
+    #controls {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 24px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      z-index: 20;
+      pointer-events: auto;
+    }
+
+    .control-button {
+      padding: 12px 16px;
+      border: none;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #111;
+      font-size: 15px;
+      font-weight: 700;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+
+    #rotationLabel {
+      position: fixed;
+      left: 50%;
+      bottom: 84px;
+      transform: translateX(-50%);
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      font-size: 13px;
+      z-index: 20;
+    }
   </style>
 </head>
 
@@ -37,7 +73,17 @@
   <div id="info">
     WebXR 地下模型テスト<br>
     AR開始後、地面を映してタップすると小さい地下モデルを置きます。<br>
-    地表枠：45cm × 16cm / 深さ：6cm
+    回転ボタンで向きを調整できます。
+  </div>
+
+  <div id="rotationLabel">
+    回転：0°
+  </div>
+
+  <div id="controls">
+    <button class="control-button" id="rotateLeft">← 90°</button>
+    <button class="control-button" id="resetRotation">リセット</button>
+    <button class="control-button" id="rotateRight">90° →</button>
   </div>
 
   <script type="module">
@@ -51,6 +97,37 @@
     let reticle;
     let hitTestSource = null;
     let hitTestSourceRequested = false;
+
+    // 向き調整用
+    let rotationY = 0;
+
+    const rotationLabel = document.getElementById("rotationLabel");
+    const rotateLeftButton = document.getElementById("rotateLeft");
+    const rotateRightButton = document.getElementById("rotateRight");
+    const resetRotationButton = document.getElementById("resetRotation");
+
+    rotateLeftButton.addEventListener("click", function(event) {
+      event.stopPropagation();
+      rotationY -= Math.PI / 2;
+      updateRotationLabel();
+    });
+
+    rotateRightButton.addEventListener("click", function(event) {
+      event.stopPropagation();
+      rotationY += Math.PI / 2;
+      updateRotationLabel();
+    });
+
+    resetRotationButton.addEventListener("click", function(event) {
+      event.stopPropagation();
+      rotationY = 0;
+      updateRotationLabel();
+    });
+
+    function updateRotationLabel() {
+      const degrees = Math.round(THREE.MathUtils.radToDeg(rotationY));
+      rotationLabel.textContent = "回転：" + degrees + "°";
+    }
 
     init();
     animate();
@@ -109,8 +186,14 @@
 
       const model = createUndergroundMiniModel();
 
+      // タップした地面位置へ配置
       model.position.setFromMatrixPosition(reticle.matrix);
+
+      // 地面の向きに合わせる
       model.quaternion.setFromRotationMatrix(reticle.matrix);
+
+      // 追加でユーザー指定の回転をかける
+      model.rotateY(rotationY);
 
       scene.add(model);
     }
@@ -118,7 +201,7 @@
     function createUndergroundMiniModel() {
       const group = new THREE.Group();
 
-      // 実寸の 1/100 スケール想定
+      // 小さい模型版
       // 45m -> 45cm = 0.45m
       // 16m -> 16cm = 0.16m
       // 2.5m -> 2.5cm = 0.025m
@@ -130,10 +213,10 @@
       const lightHeight = 0.025;
       const darkHeight = 0.035;
 
-      const lightCenterY = -lightHeight / 2;              // -0.0125m
-      const darkCenterY = -lightHeight - darkHeight / 2;  // -0.0425m
+      const lightCenterY = -lightHeight / 2;
+      const darkCenterY = -lightHeight - darkHeight / 2;
 
-      // 地下：薄色 GL 0cm ～ -2.5cm
+      // GL 0cm ～ -2.5cm：薄色
       const lightBoxGeometry = new THREE.BoxGeometry(width, lightHeight, depth);
       const lightBoxMaterial = new THREE.MeshStandardMaterial({
         color: 0x00aaff,
@@ -146,7 +229,7 @@
       lightBox.position.y = lightCenterY;
       group.add(lightBox);
 
-      // 地下：濃色 -2.5cm ～ -6.0cm
+      // GL -2.5cm ～ -6.0cm：濃色
       const darkBoxGeometry = new THREE.BoxGeometry(width, darkHeight, depth);
       const darkBoxMaterial = new THREE.MeshStandardMaterial({
         color: 0x0044ff,
@@ -159,7 +242,7 @@
       darkBox.position.y = darkCenterY;
       group.add(darkBox);
 
-      // 枠線
+      // 薄色ボックス枠線
       const lightEdges = new THREE.EdgesGeometry(lightBoxGeometry);
       const lightLine = new THREE.LineSegments(
         lightEdges,
@@ -168,6 +251,7 @@
       lightLine.position.y = lightCenterY;
       group.add(lightLine);
 
+      // 濃色ボックス枠線
       const darkEdges = new THREE.EdgesGeometry(darkBoxGeometry);
       const darkLine = new THREE.LineSegments(
         darkEdges,
