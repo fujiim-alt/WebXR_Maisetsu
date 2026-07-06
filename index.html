@@ -32,7 +32,7 @@
       pointer-events: none;
     }
 
-    #rotationLabel {
+    #statusLabel {
       position: fixed;
       left: 50%;
       bottom: 98px;
@@ -45,6 +45,7 @@
       font-weight: 700;
       z-index: 20;
       pointer-events: none;
+      white-space: nowrap;
     }
 
     #controls {
@@ -60,7 +61,7 @@
     }
 
     .control-button {
-      padding: 13px 18px;
+      padding: 13px 16px;
       border: none;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.95);
@@ -69,6 +70,11 @@
       font-weight: 700;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
       touch-action: manipulation;
+    }
+
+    .delete-button {
+      background: rgba(255, 80, 80, 0.95);
+      color: #fff;
     }
 
     .control-button:active {
@@ -80,17 +86,18 @@
 <body>
   <div id="info">
     WebXR 地下模型テスト<br>
-    回転ボタンで向きを調整して、地面をタップすると配置します。
+    地面をタップすると模型を配置します。<br>
+    配置後、最後に置いた模型を回転・削除できます。
   </div>
 
-  <div id="rotationLabel">
-    回転：0°
+  <div id="statusLabel">
+    配置数：0
   </div>
 
   <div id="controls">
-    <button class="control-button" id="rotateLeft">← 90°</button>
-    <button class="control-button" id="resetRotation">リセット</button>
-    <button class="control-button" id="rotateRight">90° →</button>
+    <button class="control-button" id="rotateLeft">← 回転</button>
+    <button class="control-button" id="rotateRight">回転 →</button>
+    <button class="control-button delete-button" id="deleteLast">削除</button>
   </div>
 
   <script type="module">
@@ -105,15 +112,15 @@
     let hitTestSource = null;
     let hitTestSourceRequested = false;
 
-    let rotationY = 0;
+    // 配置済みモデルを入れておく配列
+    const placedModels = [];
 
-    const controls = document.getElementById("controls");
-    const rotationLabel = document.getElementById("rotationLabel");
+    const statusLabel = document.getElementById("statusLabel");
     const rotateLeftButton = document.getElementById("rotateLeft");
     const rotateRightButton = document.getElementById("rotateRight");
-    const resetRotationButton = document.getElementById("resetRotation");
+    const deleteLastButton = document.getElementById("deleteLast");
 
-    // AR中にボタンを押した時、モデル設置のタップとして誤認されないようにする
+    // AR中にボタンを押した時、地面タップとして誤認されないようにする
     document.body.addEventListener("beforexrselect", function(event) {
       if (event.target.closest("#controls")) {
         event.preventDefault();
@@ -127,29 +134,65 @@
 
     rotateLeftButton.addEventListener("pointerdown", stopButtonEvent);
     rotateRightButton.addEventListener("pointerdown", stopButtonEvent);
-    resetRotationButton.addEventListener("pointerdown", stopButtonEvent);
+    deleteLastButton.addEventListener("pointerdown", stopButtonEvent);
 
     rotateLeftButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
-      rotationY -= Math.PI / 2;
-      updateRotationLabel();
+
+      const model = getLastModel();
+
+      if (!model) {
+        updateStatus("まだ配置されていません");
+        return;
+      }
+
+      model.rotateY(-Math.PI / 2);
+      updateStatus();
     });
 
     rotateRightButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
-      rotationY += Math.PI / 2;
-      updateRotationLabel();
+
+      const model = getLastModel();
+
+      if (!model) {
+        updateStatus("まだ配置されていません");
+        return;
+      }
+
+      model.rotateY(Math.PI / 2);
+      updateStatus();
     });
 
-    resetRotationButton.addEventListener("click", function(event) {
+    deleteLastButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
-      rotationY = 0;
-      updateRotationLabel();
+
+      const model = placedModels.pop();
+
+      if (!model) {
+        updateStatus("削除する模型がありません");
+        return;
+      }
+
+      scene.remove(model);
+      updateStatus();
     });
 
-    function updateRotationLabel() {
-      const degrees = Math.round(THREE.MathUtils.radToDeg(rotationY));
-      rotationLabel.textContent = "回転：" + degrees + "°";
+    function getLastModel() {
+      if (placedModels.length === 0) {
+        return null;
+      }
+
+      return placedModels[placedModels.length - 1];
+    }
+
+    function updateStatus(message) {
+      if (message) {
+        statusLabel.textContent = message;
+        return;
+      }
+
+      statusLabel.textContent = "配置数：" + placedModels.length;
     }
 
     init();
@@ -215,9 +258,11 @@
 
       model.position.setFromMatrixPosition(reticle.matrix);
       model.quaternion.setFromRotationMatrix(reticle.matrix);
-      model.rotateY(rotationY);
 
       scene.add(model);
+      placedModels.push(model);
+
+      updateStatus();
     }
 
     function createUndergroundMiniModel() {
