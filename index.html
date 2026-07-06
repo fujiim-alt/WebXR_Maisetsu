@@ -1,11 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>WebXR 動作テスト</title>
+  <title>WebXR 地下模型テスト</title>
 
   <style>
     html,
@@ -36,8 +35,9 @@
 
 <body>
   <div id="info">
-    WebXRテスト<br>
-    AR開始後、地面を映して画面をタップすると赤い箱を置きます。
+    WebXR 地下模型テスト<br>
+    AR開始後、地面を映してタップすると小さい地下モデルを置きます。<br>
+    地表枠：45cm × 16cm / 深さ：6cm
   </div>
 
   <script type="module">
@@ -89,7 +89,7 @@
       controller.addEventListener("select", onSelect);
       scene.add(controller);
 
-      const ringGeometry = new THREE.RingGeometry(0.12, 0.16, 32).rotateX(-Math.PI / 2);
+      const ringGeometry = new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2);
       const ringMaterial = new THREE.MeshBasicMaterial({
         color: 0x00ff00
       });
@@ -107,21 +107,153 @@
         return;
       }
 
-      const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xff0000,
+      const model = createUndergroundMiniModel();
+
+      model.position.setFromMatrixPosition(reticle.matrix);
+      model.quaternion.setFromRotationMatrix(reticle.matrix);
+
+      scene.add(model);
+    }
+
+    function createUndergroundMiniModel() {
+      const group = new THREE.Group();
+
+      // 実寸の 1/100 スケール想定
+      // 45m -> 45cm = 0.45m
+      // 16m -> 16cm = 0.16m
+      // 2.5m -> 2.5cm = 0.025m
+      // 6.0m -> 6cm = 0.06m
+
+      const width = 0.45;
+      const depth = 0.16;
+
+      const lightHeight = 0.025;
+      const darkHeight = 0.035;
+
+      const lightCenterY = -lightHeight / 2;              // -0.0125m
+      const darkCenterY = -lightHeight - darkHeight / 2;  // -0.0425m
+
+      // 地下：薄色 GL 0cm ～ -2.5cm
+      const lightBoxGeometry = new THREE.BoxGeometry(width, lightHeight, depth);
+      const lightBoxMaterial = new THREE.MeshStandardMaterial({
+        color: 0x00aaff,
         transparent: true,
-        opacity: 0.8
+        opacity: 0.22,
+        depthWrite: false
       });
 
-      const cube = new THREE.Mesh(geometry, material);
+      const lightBox = new THREE.Mesh(lightBoxGeometry, lightBoxMaterial);
+      lightBox.position.y = lightCenterY;
+      group.add(lightBox);
 
-      cube.position.setFromMatrixPosition(reticle.matrix);
+      // 地下：濃色 -2.5cm ～ -6.0cm
+      const darkBoxGeometry = new THREE.BoxGeometry(width, darkHeight, depth);
+      const darkBoxMaterial = new THREE.MeshStandardMaterial({
+        color: 0x0044ff,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false
+      });
 
-      // 箱の底面が地面に乗るように、箱の高さの半分だけ上げる
-      cube.position.y += 0.15;
+      const darkBox = new THREE.Mesh(darkBoxGeometry, darkBoxMaterial);
+      darkBox.position.y = darkCenterY;
+      group.add(darkBox);
 
-      scene.add(cube);
+      // 枠線
+      const lightEdges = new THREE.EdgesGeometry(lightBoxGeometry);
+      const lightLine = new THREE.LineSegments(
+        lightEdges,
+        new THREE.LineBasicMaterial({ color: 0x00ccff })
+      );
+      lightLine.position.y = lightCenterY;
+      group.add(lightLine);
+
+      const darkEdges = new THREE.EdgesGeometry(darkBoxGeometry);
+      const darkLine = new THREE.LineSegments(
+        darkEdges,
+        new THREE.LineBasicMaterial({ color: 0x0033ff })
+      );
+      darkLine.position.y = darkCenterY;
+      group.add(darkLine);
+
+      // 地表枠 45cm × 16cm
+      const groundFrame = createRectangleFrame(width, depth, 0xffaa00);
+      groundFrame.position.y = 0.002;
+      group.add(groundFrame);
+
+      // 四隅十字マーカー
+      const markerLength = 0.035;
+      const markerThickness = 0.006;
+      const markerY = 0.004;
+
+      const corners = [
+        [-width / 2, -depth / 2],
+        [ width / 2, -depth / 2],
+        [-width / 2,  depth / 2],
+        [ width / 2,  depth / 2]
+      ];
+
+      for (const [x, z] of corners) {
+        const cross = createCrossMarker(markerLength, markerThickness, 0xff3333);
+        cross.position.set(x, markerY, z);
+        group.add(cross);
+      }
+
+      return group;
+    }
+
+    function createRectangleFrame(width, depth, color) {
+      const group = new THREE.Group();
+
+      const barThickness = 0.006;
+      const barHeight = 0.006;
+
+      const material = new THREE.MeshBasicMaterial({
+        color: color
+      });
+
+      const longBarGeometry = new THREE.BoxGeometry(width, barHeight, barThickness);
+      const shortBarGeometry = new THREE.BoxGeometry(barThickness, barHeight, depth);
+
+      const front = new THREE.Mesh(longBarGeometry, material);
+      front.position.z = -depth / 2;
+      group.add(front);
+
+      const back = new THREE.Mesh(longBarGeometry, material);
+      back.position.z = depth / 2;
+      group.add(back);
+
+      const left = new THREE.Mesh(shortBarGeometry, material);
+      left.position.x = -width / 2;
+      group.add(left);
+
+      const right = new THREE.Mesh(shortBarGeometry, material);
+      right.position.x = width / 2;
+      group.add(right);
+
+      return group;
+    }
+
+    function createCrossMarker(length, thickness, color) {
+      const group = new THREE.Group();
+
+      const material = new THREE.MeshBasicMaterial({
+        color: color
+      });
+
+      const xBar = new THREE.Mesh(
+        new THREE.BoxGeometry(length, thickness, thickness),
+        material
+      );
+      group.add(xBar);
+
+      const zBar = new THREE.Mesh(
+        new THREE.BoxGeometry(thickness, thickness, length),
+        material
+      );
+      group.add(zBar);
+
+      return group;
     }
 
     function onWindowResize() {
