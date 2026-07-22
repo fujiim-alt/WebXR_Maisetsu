@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>WebXR 地下模型テスト</title>
+  <title>WebXR 半カプセル 実寸テスト</title>
 
   <style>
     html,
@@ -114,9 +114,9 @@
 
 <body>
   <div id="info">
-    WebXR 地下模型テスト<br>
+    WebXR 半カプセル 実寸テスト<br>
     地面をタップすると模型を1個だけ配置します。<br>
-    回転角度は右下ボタンで切り替えできます。
+    全高24m、半径7.6m、上部7.6mが半球の実寸表示です。
   </div>
 
   <div id="statusLabel">
@@ -158,8 +158,8 @@
     // 配置できる模型は1個だけ
     let placedModel = null;
 
-    // 位置微調整量：1cm
-    const moveStep = 0.01;
+    // 位置微調整量：10cm
+    const moveStep = 0.10;
 
     // 回転角度：30° / 5° / 1° を切り替え
     const rotateStepsDeg = [30, 5, 1];
@@ -283,22 +283,22 @@
       // translateX / translateZ は、模型自身の向きを基準に移動します
       if (direction === "forward") {
         placedModel.translateZ(-moveStep);
-        updateStatus("前へ 1cm");
+        updateStatus("前へ 10cm");
       }
 
       if (direction === "back") {
         placedModel.translateZ(moveStep);
-        updateStatus("後へ 1cm");
+        updateStatus("後へ 10cm");
       }
 
       if (direction === "left") {
         placedModel.translateX(-moveStep);
-        updateStatus("左へ 1cm");
+        updateStatus("左へ 10cm");
       }
 
       if (direction === "right") {
         placedModel.translateX(moveStep);
-        updateStatus("右へ 1cm");
+        updateStatus("右へ 10cm");
       }
     }
 
@@ -323,7 +323,7 @@
         70,
         window.innerWidth / window.innerHeight,
         0.01,
-        20
+        200
       );
 
       const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 2);
@@ -381,7 +381,7 @@
         placedModel = null;
       }
 
-      const model = createUndergroundMiniModel();
+      const model = createHalfCapsuleFullScaleModel();
 
       model.position.setFromMatrixPosition(reticle.matrix);
       model.quaternion.setFromRotationMatrix(reticle.matrix);
@@ -392,90 +392,108 @@
       updateStatus("配置しました");
     }
 
-    function createUndergroundMiniModel() {
+    function createHalfCapsuleFullScaleModel() {
       const group = new THREE.Group();
 
-      // 小さい模型版
-      // 45m -> 45cm = 0.45m
-      // 16m -> 16cm = 0.16m
-      // 2.5m -> 2.5cm = 0.025m
-      // 6.0m -> 6cm = 0.06m
+      // 実寸モデル
+      // 全高: 24.0m
+      // 半径: 7.6m
+      // 上部半球高さ: 7.6m
+      // 円筒部高さ: 24.0m - 7.6m = 16.4m
+      const totalHeight = 24.0;
+      const radius = 7.6;
+      const cylinderHeight = totalHeight - radius;
 
-      const width = 0.45;
-      const depth = 0.16;
-
-      const lightHeight = 0.025;
-      const darkHeight = 0.035;
-
-      const lightCenterY = -lightHeight / 2;
-      const darkCenterY = -lightHeight - darkHeight / 2;
-
-      // GL 0cm ～ -2.5cm：薄色
-      const lightBoxGeometry = new THREE.BoxGeometry(width, lightHeight, depth);
-      const lightBoxMaterial = new THREE.MeshStandardMaterial({
-        color: 0x00aaff,
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x2580ff,
         transparent: true,
-        opacity: 0.22,
-        depthWrite: false
+        opacity: 0.35,
+        depthWrite: false,
+        side: THREE.DoubleSide
       });
 
-      const lightBox = new THREE.Mesh(lightBoxGeometry, lightBoxMaterial);
-      lightBox.position.y = lightCenterY;
-      group.add(lightBox);
+      // 円筒部: GL=0 から +16.4m
+      const cylinderGeometry = new THREE.CylinderGeometry(
+        radius,
+        radius,
+        cylinderHeight,
+        128,
+        1,
+        false
+      );
 
-      // GL -2.5cm ～ -6.0cm：濃色
-      const darkBoxGeometry = new THREE.BoxGeometry(width, darkHeight, depth);
-      const darkBoxMaterial = new THREE.MeshStandardMaterial({
-        color: 0x0044ff,
-        transparent: true,
-        opacity: 0.42,
-        depthWrite: false
+      const cylinder = new THREE.Mesh(cylinderGeometry, bodyMaterial);
+      cylinder.position.y = cylinderHeight / 2;
+      group.add(cylinder);
+
+      const cylinderEdges = new THREE.EdgesGeometry(cylinderGeometry);
+      const cylinderLine = new THREE.LineSegments(
+        cylinderEdges,
+        new THREE.LineBasicMaterial({ color: 0x0055ff })
+      );
+      cylinderLine.position.y = cylinderHeight / 2;
+      group.add(cylinderLine);
+
+      // 上部半球: 半球中心を円筒部上端に置く
+      // SphereGeometryのthetaLengthをPI/2にして上半球だけを作る
+      const hemisphereGeometry = new THREE.SphereGeometry(
+        radius,
+        128,
+        48,
+        0,
+        Math.PI * 2,
+        0,
+        Math.PI / 2
+      );
+
+      const hemisphere = new THREE.Mesh(hemisphereGeometry, bodyMaterial);
+      hemisphere.position.y = cylinderHeight;
+      group.add(hemisphere);
+
+      const hemisphereEdges = new THREE.EdgesGeometry(hemisphereGeometry);
+      const hemisphereLine = new THREE.LineSegments(
+        hemisphereEdges,
+        new THREE.LineBasicMaterial({ color: 0x0055ff })
+      );
+      hemisphereLine.position.y = cylinderHeight;
+      group.add(hemisphereLine);
+
+      // GL面の外周リング
+      const groundRingGeometry = new THREE.RingGeometry(
+        radius - 0.08,
+        radius + 0.08,
+        128
+      ).rotateX(-Math.PI / 2);
+
+      const groundRingMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffaa00,
+        side: THREE.DoubleSide
       });
 
-      const darkBox = new THREE.Mesh(darkBoxGeometry, darkBoxMaterial);
-      darkBox.position.y = darkCenterY;
-      group.add(darkBox);
+      const groundRing = new THREE.Mesh(groundRingGeometry, groundRingMaterial);
+      groundRing.position.y = 0.02;
+      group.add(groundRing);
 
-      // 薄色ボックス枠線
-      const lightEdges = new THREE.EdgesGeometry(lightBoxGeometry);
-      const lightLine = new THREE.LineSegments(
-        lightEdges,
-        new THREE.LineBasicMaterial({ color: 0x00ccff })
-      );
-      lightLine.position.y = lightCenterY;
-      group.add(lightLine);
+      // 円筒部と半球の境界リング
+      const shoulderRingGeometry = new THREE.RingGeometry(
+        radius - 0.06,
+        radius + 0.06,
+        128
+      ).rotateX(-Math.PI / 2);
 
-      // 濃色ボックス枠線
-      const darkEdges = new THREE.EdgesGeometry(darkBoxGeometry);
-      const darkLine = new THREE.LineSegments(
-        darkEdges,
-        new THREE.LineBasicMaterial({ color: 0x0033ff })
-      );
-      darkLine.position.y = darkCenterY;
-      group.add(darkLine);
+      const shoulderRingMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        side: THREE.DoubleSide
+      });
 
-      // 地表枠
-      const groundFrame = createRectangleFrame(width, depth, 0xffaa00);
-      groundFrame.position.y = 0.002;
-      group.add(groundFrame);
+      const shoulderRing = new THREE.Mesh(shoulderRingGeometry, shoulderRingMaterial);
+      shoulderRing.position.y = cylinderHeight;
+      group.add(shoulderRing);
 
-      // 四隅十字マーカー
-      const markerLength = 0.035;
-      const markerThickness = 0.006;
-      const markerY = 0.004;
-
-      const corners = [
-        [-width / 2, -depth / 2],
-        [ width / 2, -depth / 2],
-        [-width / 2,  depth / 2],
-        [ width / 2,  depth / 2]
-      ];
-
-      for (const [x, z] of corners) {
-        const cross = createCrossMarker(markerLength, markerThickness, 0xff3333);
-        cross.position.set(x, markerY, z);
-        group.add(cross);
-      }
+      // 配置中心十字マーカー
+      const centerCross = createCrossMarker(1.2, 0.08, 0xff3333);
+      centerCross.position.y = 0.04;
+      group.add(centerCross);
 
       return group;
     }
