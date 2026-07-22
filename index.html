@@ -125,7 +125,7 @@
   <div id="info">
     WebXR 地下直方体 実寸テスト<br>
     地面をタップすると地下モデルを1個だけ配置します。<br>
-    実寸表示です。移動量と回転角度を右下ボタンで切替できます。
+    カーソル中心から左方向45m、奥方向16m、下方向6mに伸びます。
   </div>
 
   <div id="statusLabel">
@@ -422,8 +422,12 @@
 
       const model = createUndergroundFullScaleModel();
 
+      // カーソル中心を角として配置
       model.position.setFromMatrixPosition(reticle.matrix);
-      model.quaternion.setFromRotationMatrix(reticle.matrix);
+
+      // 地面検出の傾きに引っ張られないよう水平固定
+      // 向きは配置後に回転ボタンで調整
+      model.rotation.set(0, 0, 0);
 
       scene.add(model);
       placedModel = model;
@@ -435,17 +439,29 @@
       const group = new THREE.Group();
 
       // 実寸地下モデル
+      //
+      // カーソル中心 = 角
+      // カーソルから左方向へ45m、奥方向へ16m、下方向へ6m
+      //
       // 底面：45m × 16m
       // 薄色：GL 0m ～ -2.5m
       // 濃色：GL -2.5m ～ -6.0m
+
       const width = 45.0;
       const depth = 16.0;
 
       const lightHeight = 2.5;
       const darkHeight = 3.5;
 
-      const lightCenterY = -lightHeight / 2;
-      const darkCenterY = -lightHeight - darkHeight / 2;
+      // 地表に乗って見えないよう、上面を少しだけ下げる
+      const groundOffset = 0.03;
+
+      const lightCenterY = -groundOffset - lightHeight / 2;
+      const darkCenterY = -groundOffset - lightHeight - darkHeight / 2;
+
+      // カーソルから左方向・奥方向へ伸ばすため、中心は -X / -Z 側
+      const centerX = -width / 2;
+      const centerZ = -depth / 2;
 
       // GL 0m ～ -2.5m：薄色
       const lightBoxGeometry = new THREE.BoxGeometry(width, lightHeight, depth);
@@ -458,7 +474,7 @@
       });
 
       const lightBox = new THREE.Mesh(lightBoxGeometry, lightBoxMaterial);
-      lightBox.position.y = lightCenterY;
+      lightBox.position.set(centerX, lightCenterY, centerZ);
       group.add(lightBox);
 
       // GL -2.5m ～ -6.0m：濃色
@@ -472,7 +488,7 @@
       });
 
       const darkBox = new THREE.Mesh(darkBoxGeometry, darkBoxMaterial);
-      darkBox.position.y = darkCenterY;
+      darkBox.position.set(centerX, darkCenterY, centerZ);
       group.add(darkBox);
 
       // 薄色ボックス枠線
@@ -481,7 +497,7 @@
         lightEdges,
         new THREE.LineBasicMaterial({ color: 0x00ccff })
       );
-      lightLine.position.y = lightCenterY;
+      lightLine.position.set(centerX, lightCenterY, centerZ);
       group.add(lightLine);
 
       // 濃色ボックス枠線
@@ -490,12 +506,12 @@
         darkEdges,
         new THREE.LineBasicMaterial({ color: 0x0033ff })
       );
-      darkLine.position.y = darkCenterY;
+      darkLine.position.set(centerX, darkCenterY, centerZ);
       group.add(darkLine);
 
       // 地表枠 45m × 16m
       const groundFrame = createRectangleFrame(width, depth, 0xffaa00, 0.12, 0.10);
-      groundFrame.position.y = 0.03;
+      groundFrame.position.set(centerX, 0.03, centerZ);
       group.add(groundFrame);
 
       // 四隅十字マーカー
@@ -503,11 +519,13 @@
       const markerThickness = 0.12;
       const markerY = 0.08;
 
+      // カーソル中心が角。
+      // そこから左方向45m、奥方向16mへ広がる。
       const corners = [
-        [-width / 2, -depth / 2],
-        [ width / 2, -depth / 2],
-        [-width / 2,  depth / 2],
-        [ width / 2,  depth / 2]
+        [0, 0],
+        [-width, 0],
+        [0, -depth],
+        [-width, -depth]
       ];
 
       for (const [x, z] of corners) {
