@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>WebXR 地下模型テスト</title>
+  <title>WebXR 地下直方体 実寸テスト</title>
 
   <style>
     html,
@@ -105,6 +105,16 @@
       z-index: 40;
     }
 
+    #moveStepToggle {
+      position: fixed;
+      right: 16px;
+      bottom: 78px;
+      min-width: 92px;
+      background: rgba(255, 255, 255, 0.95);
+      color: #111;
+      z-index: 40;
+    }
+
     .control-button:active {
       transform: scale(0.96);
     }
@@ -113,13 +123,13 @@
 
 <body>
   <div id="info">
-    WebXR 地下模型テスト<br>
-    地面をタップすると模型を1個だけ配置します。<br>
-    回転角度は右下ボタンで切り替えできます。
+    WebXR 地下直方体 実寸テスト<br>
+    地面をタップすると地下モデルを1個だけ配置します。<br>
+    実寸表示です。移動量と回転角度を右下ボタンで切替できます。
   </div>
 
   <div id="statusLabel">
-    未配置 / 角度 5°
+    未配置 / 角度 5° / 移動 10cm
   </div>
 
   <div id="controls">
@@ -140,6 +150,7 @@
   </div>
 
   <button class="control-button" id="deleteModel">削除</button>
+  <button class="control-button" id="moveStepToggle">移動 10cm</button>
   <button class="control-button" id="angleToggle">角度 5°</button>
 
   <script type="module">
@@ -154,15 +165,22 @@
     let hitTestSource = null;
     let hitTestSourceRequested = false;
 
-    // 配置できる模型は1個だけ
+    // 配置できるモデルは1個だけ
     let placedModel = null;
 
-    // 位置微調整量：1cm
-    const moveStep = 0.01;
+    // 移動量：10cm / 1m / 5m を切り替え
+    const moveSteps = [
+      { label: "10cm", value: 0.10 },
+      { label: "1m", value: 1.00 },
+      { label: "5m", value: 5.00 }
+    ];
+
+    let moveStepIndex = 0;
+    let moveStep = moveSteps[moveStepIndex].value;
 
     // 回転角度：30° / 5° / 1° を切り替え
     const rotateStepsDeg = [30, 5, 1];
-    let rotateStepIndex = 1; // 初期値は5°
+    let rotateStepIndex = 1;
     let rotateStep = THREE.MathUtils.degToRad(rotateStepsDeg[rotateStepIndex]);
 
     const statusLabel = document.getElementById("statusLabel");
@@ -171,6 +189,7 @@
     const rotateRightButton = document.getElementById("rotateRight");
     const deleteModelButton = document.getElementById("deleteModel");
     const angleToggleButton = document.getElementById("angleToggle");
+    const moveStepToggleButton = document.getElementById("moveStepToggle");
 
     const moveForwardButton = document.getElementById("moveForward");
     const moveBackButton = document.getElementById("moveBack");
@@ -182,7 +201,8 @@
       if (
         event.target.closest("#controls") ||
         event.target.closest("#deleteModel") ||
-        event.target.closest("#angleToggle")
+        event.target.closest("#angleToggle") ||
+        event.target.closest("#moveStepToggle")
       ) {
         event.preventDefault();
       }
@@ -232,6 +252,16 @@
       updateStatus("角度 " + getCurrentAngleText());
     });
 
+    moveStepToggleButton.addEventListener("click", function(event) {
+      stopButtonEvent(event);
+
+      moveStepIndex = (moveStepIndex + 1) % moveSteps.length;
+      moveStep = moveSteps[moveStepIndex].value;
+
+      updateMoveStepButton();
+      updateStatus("移動 " + getCurrentMoveStepText());
+    });
+
     deleteModelButton.addEventListener("click", function(event) {
       stopButtonEvent(event);
 
@@ -273,42 +303,51 @@
       angleToggleButton.textContent = "角度 " + getCurrentAngleText();
     }
 
+    function getCurrentMoveStepText() {
+      return moveSteps[moveStepIndex].label;
+    }
+
+    function updateMoveStepButton() {
+      moveStepToggleButton.textContent = "移動 " + getCurrentMoveStepText();
+    }
+
     function moveModel(direction) {
       if (!placedModel) {
         updateStatus("未配置");
         return;
       }
 
-      // translateX / translateZ は、模型自身の向きを基準に移動します
+      // translateX / translateZ は、モデル自身の向きを基準に移動します
       if (direction === "forward") {
         placedModel.translateZ(-moveStep);
-        updateStatus("前へ 1cm");
+        updateStatus("前へ " + getCurrentMoveStepText());
       }
 
       if (direction === "back") {
         placedModel.translateZ(moveStep);
-        updateStatus("後へ 1cm");
+        updateStatus("後へ " + getCurrentMoveStepText());
       }
 
       if (direction === "left") {
         placedModel.translateX(-moveStep);
-        updateStatus("左へ 1cm");
+        updateStatus("左へ " + getCurrentMoveStepText());
       }
 
       if (direction === "right") {
         placedModel.translateX(moveStep);
-        updateStatus("右へ 1cm");
+        updateStatus("右へ " + getCurrentMoveStepText());
       }
     }
 
     function updateStatus(message) {
       const base = placedModel ? "配置済み" : "未配置";
       const angle = "角度 " + getCurrentAngleText();
+      const move = "移動 " + getCurrentMoveStepText();
 
       if (message) {
-        statusLabel.textContent = message + " / " + angle;
+        statusLabel.textContent = message + " / " + angle + " / " + move;
       } else {
-        statusLabel.textContent = base + " / " + angle;
+        statusLabel.textContent = base + " / " + angle + " / " + move;
       }
     }
 
@@ -322,7 +361,7 @@
         70,
         window.innerWidth / window.innerHeight,
         0.01,
-        20
+        200
       );
 
       const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 2);
@@ -353,7 +392,7 @@
       controller.addEventListener("select", onSelect);
       scene.add(controller);
 
-      const ringGeometry = new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2);
+      const ringGeometry = new THREE.RingGeometry(0.35, 0.45, 32).rotateX(-Math.PI / 2);
       const ringMaterial = new THREE.MeshBasicMaterial({
         color: 0x00ff00
       });
@@ -364,6 +403,7 @@
       scene.add(reticle);
 
       updateAngleButton();
+      updateMoveStepButton();
       updateStatus();
 
       window.addEventListener("resize", onWindowResize);
@@ -374,13 +414,13 @@
         return;
       }
 
-      // 1個までなので、既存模型があれば削除して置き直す
+      // 1個までなので、既存モデルがあれば削除して置き直す
       if (placedModel) {
         scene.remove(placedModel);
         placedModel = null;
       }
 
-      const model = createUndergroundMiniModel();
+      const model = createUndergroundFullScaleModel();
 
       model.position.setFromMatrixPosition(reticle.matrix);
       model.quaternion.setFromRotationMatrix(reticle.matrix);
@@ -391,44 +431,44 @@
       updateStatus("配置しました");
     }
 
-    function createUndergroundMiniModel() {
+    function createUndergroundFullScaleModel() {
       const group = new THREE.Group();
 
-      // 小さい模型版
-      // 45m -> 45cm = 0.45m
-      // 16m -> 16cm = 0.16m
-      // 2.5m -> 2.5cm = 0.025m
-      // 6.0m -> 6cm = 0.06m
+      // 実寸地下モデル
+      // 底面：45m × 16m
+      // 薄色：GL 0m ～ -2.5m
+      // 濃色：GL -2.5m ～ -6.0m
+      const width = 45.0;
+      const depth = 16.0;
 
-      const width = 0.45;
-      const depth = 0.16;
-
-      const lightHeight = 0.025;
-      const darkHeight = 0.035;
+      const lightHeight = 2.5;
+      const darkHeight = 3.5;
 
       const lightCenterY = -lightHeight / 2;
       const darkCenterY = -lightHeight - darkHeight / 2;
 
-      // GL 0cm ～ -2.5cm：薄色
+      // GL 0m ～ -2.5m：薄色
       const lightBoxGeometry = new THREE.BoxGeometry(width, lightHeight, depth);
       const lightBoxMaterial = new THREE.MeshStandardMaterial({
         color: 0x00aaff,
         transparent: true,
-        opacity: 0.22,
-        depthWrite: false
+        opacity: 0.20,
+        depthWrite: false,
+        side: THREE.DoubleSide
       });
 
       const lightBox = new THREE.Mesh(lightBoxGeometry, lightBoxMaterial);
       lightBox.position.y = lightCenterY;
       group.add(lightBox);
 
-      // GL -2.5cm ～ -6.0cm：濃色
+      // GL -2.5m ～ -6.0m：濃色
       const darkBoxGeometry = new THREE.BoxGeometry(width, darkHeight, depth);
       const darkBoxMaterial = new THREE.MeshStandardMaterial({
         color: 0x0044ff,
         transparent: true,
         opacity: 0.42,
-        depthWrite: false
+        depthWrite: false,
+        side: THREE.DoubleSide
       });
 
       const darkBox = new THREE.Mesh(darkBoxGeometry, darkBoxMaterial);
@@ -453,15 +493,15 @@
       darkLine.position.y = darkCenterY;
       group.add(darkLine);
 
-      // 地表枠
-      const groundFrame = createRectangleFrame(width, depth, 0xffaa00);
-      groundFrame.position.y = 0.002;
+      // 地表枠 45m × 16m
+      const groundFrame = createRectangleFrame(width, depth, 0xffaa00, 0.12, 0.10);
+      groundFrame.position.y = 0.03;
       group.add(groundFrame);
 
       // 四隅十字マーカー
-      const markerLength = 0.035;
-      const markerThickness = 0.006;
-      const markerY = 0.004;
+      const markerLength = 1.5;
+      const markerThickness = 0.12;
+      const markerY = 0.08;
 
       const corners = [
         [-width / 2, -depth / 2],
@@ -479,11 +519,8 @@
       return group;
     }
 
-    function createRectangleFrame(width, depth, color) {
+    function createRectangleFrame(width, depth, color, barThickness, barHeight) {
       const group = new THREE.Group();
-
-      const barThickness = 0.006;
-      const barHeight = 0.006;
 
       const material = new THREE.MeshBasicMaterial({
         color: color
