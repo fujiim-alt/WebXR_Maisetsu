@@ -125,7 +125,7 @@
   <div id="info">
     WebXR 地下直方体 実寸テスト<br>
     地面をタップすると地下モデルを1個だけ配置します。<br>
-    カーソル中心から左方向45m、奥方向16m、下方向6mに伸びます。
+    地表直下〜-2.5mは線のみ、-2.5m〜-6.0mを濃青で表示します。
   </div>
 
   <div id="statusLabel">
@@ -165,10 +165,8 @@
     let hitTestSource = null;
     let hitTestSourceRequested = false;
 
-    // 配置できるモデルは1個だけ
     let placedModel = null;
 
-    // 移動量：10cm / 1m / 5m を切り替え
     const moveSteps = [
       { label: "10cm", value: 0.10 },
       { label: "1m", value: 1.00 },
@@ -178,7 +176,6 @@
     let moveStepIndex = 0;
     let moveStep = moveSteps[moveStepIndex].value;
 
-    // 回転角度：30° / 5° / 1° を切り替え
     const rotateStepsDeg = [30, 5, 1];
     let rotateStepIndex = 1;
     let rotateStep = THREE.MathUtils.degToRad(rotateStepsDeg[rotateStepIndex]);
@@ -196,7 +193,6 @@
     const moveLeftButton = document.getElementById("moveLeft");
     const moveRightButton = document.getElementById("moveRight");
 
-    // AR中にボタンを押した時、地面タップとして誤認されないようにする
     document.body.addEventListener("beforexrselect", function(event) {
       if (
         event.target.closest("#controls") ||
@@ -317,7 +313,6 @@
         return;
       }
 
-      // translateX / translateZ は、モデル自身の向きを基準に移動します
       if (direction === "forward") {
         placedModel.translateZ(-moveStep);
         updateStatus("前へ " + getCurrentMoveStepText());
@@ -414,7 +409,6 @@
         return;
       }
 
-      // 1個までなので、既存モデルがあれば削除して置き直す
       if (placedModel) {
         scene.remove(placedModel);
         placedModel = null;
@@ -422,11 +416,7 @@
 
       const model = createUndergroundFullScaleModel();
 
-      // カーソル中心を角として配置
       model.position.setFromMatrixPosition(reticle.matrix);
-
-      // 地面検出の傾きに引っ張られないよう水平固定
-      // 向きは配置後に回転ボタンで調整
       model.rotation.set(0, 0, 0);
 
       scene.add(model);
@@ -438,46 +428,24 @@
     function createUndergroundFullScaleModel() {
       const group = new THREE.Group();
 
-      // 実寸地下モデル
-      //
-      // カーソル中心 = 角
-      // カーソルから左方向へ45m、奥方向へ16m、下方向へ6m
-      //
-      // 底面：45m × 16m
-      // 薄色：GL 0m ～ -2.5m
-      // 濃色：GL -2.5m ～ -6.0m
-
       const width = 45.0;
       const depth = 16.0;
 
-      const lightHeight = 2.5;
+      const upperEmptyHeight = 2.5;
       const darkHeight = 3.5;
 
-      // 地表に乗って見えないよう、上面を少しだけ下げる
-      const groundOffset = 0.03;
-
-      const lightCenterY = -groundOffset - lightHeight / 2;
-      const darkCenterY = -groundOffset - lightHeight - darkHeight / 2;
-
-      // カーソルから左方向・奥方向へ伸ばすため、中心は -X / -Z 側
       const centerX = -width / 2;
       const centerZ = -depth / 2;
 
-      // GL 0m ～ -2.5m：薄色
-      const lightBoxGeometry = new THREE.BoxGeometry(width, lightHeight, depth);
-      const lightBoxMaterial = new THREE.MeshStandardMaterial({
-        color: 0x00aaff,
-        transparent: true,
-        opacity: 0.20,
-        depthWrite: false,
-        side: THREE.DoubleSide
-      });
+      const darkCenterY = -upperEmptyHeight - darkHeight / 2;
 
-      const lightBox = new THREE.Mesh(lightBoxGeometry, lightBoxMaterial);
-      lightBox.position.set(centerX, lightCenterY, centerZ);
-      group.add(lightBox);
+      const corners = [
+        [0, 0],
+        [-width, 0],
+        [0, -depth],
+        [-width, -depth]
+      ];
 
-      // GL -2.5m ～ -6.0m：濃色
       const darkBoxGeometry = new THREE.BoxGeometry(width, darkHeight, depth);
       const darkBoxMaterial = new THREE.MeshStandardMaterial({
         color: 0x0044ff,
@@ -491,16 +459,6 @@
       darkBox.position.set(centerX, darkCenterY, centerZ);
       group.add(darkBox);
 
-      // 薄色ボックス枠線
-      const lightEdges = new THREE.EdgesGeometry(lightBoxGeometry);
-      const lightLine = new THREE.LineSegments(
-        lightEdges,
-        new THREE.LineBasicMaterial({ color: 0x00ccff })
-      );
-      lightLine.position.set(centerX, lightCenterY, centerZ);
-      group.add(lightLine);
-
-      // 濃色ボックス枠線
       const darkEdges = new THREE.EdgesGeometry(darkBoxGeometry);
       const darkLine = new THREE.LineSegments(
         darkEdges,
@@ -509,24 +467,29 @@
       darkLine.position.set(centerX, darkCenterY, centerZ);
       group.add(darkLine);
 
-      // 地表枠 45m × 16m
       const groundFrame = createRectangleFrame(width, depth, 0xffaa00, 0.12, 0.10);
       groundFrame.position.set(centerX, 0.03, centerZ);
       group.add(groundFrame);
 
-      // 四隅十字マーカー
+      const verticalEdgeMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ccff
+      });
+
+      const verticalEdgeGeometry = new THREE.BoxGeometry(
+        0.12,
+        upperEmptyHeight,
+        0.12
+      );
+
+      for (const [x, z] of corners) {
+        const edge = new THREE.Mesh(verticalEdgeGeometry, verticalEdgeMaterial);
+        edge.position.set(x, -upperEmptyHeight / 2, z);
+        group.add(edge);
+      }
+
       const markerLength = 1.5;
       const markerThickness = 0.12;
       const markerY = 0.08;
-
-      // カーソル中心が角。
-      // そこから左方向45m、奥方向16mへ広がる。
-      const corners = [
-        [0, 0],
-        [-width, 0],
-        [0, -depth],
-        [-width, -depth]
-      ];
 
       for (const [x, z] of corners) {
         const cross = createCrossMarker(markerLength, markerThickness, 0xff3333);
